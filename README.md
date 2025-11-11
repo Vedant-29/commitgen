@@ -14,7 +14,15 @@ For Ollama: Install from https://ollama.ai and pull a model (e.g., `ollama pull 
 
 For OpenRouter:
 - Get API key from https://openrouter.ai/keys
-- Set in config or as environment variable: `export OPENROUTER_API_KEY="your-key"` (add to `~/.bashrc` or `~/.zshrc` to persist)
+- Set your API key using one of these methods (in order of preference):
+  1. **`.env` file in home directory (recommended for global use)**: Create a single `.env` file in your home directory that works across all repos:
+     ```bash
+     echo 'OPENROUTER_API_KEY=your-api-key-here' > ~/.env
+     ```
+     This single file will be automatically loaded whenever you use `cgen` in any repository. The `.env` file is automatically ignored by git (already in `.gitignore`), so your key stays secure.
+  2. **Project-specific `.env` file**: Create a `.env` file in a specific project root if you need different API keys per project (overrides home `.env`)
+  3. **Environment variable**: `export OPENROUTER_API_KEY="your-key"` (add to `~/.bashrc` or `~/.zshrc` to persist)
+  4. **Config file**: Set `apiKey` in your `.commitgenrc.json` (less secure, not recommended)
 
 ## First Time Setup
 

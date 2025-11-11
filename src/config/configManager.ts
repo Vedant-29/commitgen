@@ -9,9 +9,29 @@ export class ConfigManager {
   private configPath: string;
 
   constructor() {
-    dotenv.config();
+    this.loadEnvFiles();
     this.configPath = this.findConfigPath();
     this.config = this.loadConfig();
+  }
+
+  private loadEnvFiles(): void {
+    // Load .env files from multiple locations (in order of precedence):
+    // 1. Home directory (user-wide, lower priority) - loaded first
+    // 2. Current working directory (project-specific, highest priority) - loaded second, overrides home
+    // Later files override earlier ones, so cwd .env takes precedence
+    
+    const homeEnv = path.join(os.homedir(), '.env');
+    const cwdEnv = path.join(process.cwd(), '.env');
+    
+    // Load home .env first (won't override existing env vars)
+    if (fs.existsSync(homeEnv)) {
+      dotenv.config({ path: homeEnv, override: false });
+    }
+    
+    // Load cwd .env second (will override home .env values)
+    if (fs.existsSync(cwdEnv)) {
+      dotenv.config({ path: cwdEnv, override: true });
+    }
   }
 
   private findConfigPath(): string {
