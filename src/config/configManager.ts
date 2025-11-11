@@ -15,20 +15,32 @@ export class ConfigManager {
   }
 
   private findConfigPath(): string {
-    const candidates = [
-      path.join(process.cwd(), '.commitgenrc'),
+    // Check local config first (project-specific overrides)
+    const localCandidates = [
       path.join(process.cwd(), '.commitgenrc.json'),
-      path.join(os.homedir(), '.commitgenrc'),
-      path.join(os.homedir(), '.commitgenrc.json'),
+      path.join(process.cwd(), '.commitgenrc'),
     ];
 
-    for (const candidate of candidates) {
+    for (const candidate of localCandidates) {
       if (fs.existsSync(candidate)) {
         return candidate;
       }
     }
 
-    return path.join(process.cwd(), '.commitgenrc.json');
+    // Fallback to global config (user-wide defaults)
+    const globalCandidates = [
+      path.join(os.homedir(), '.commitgenrc.json'),
+      path.join(os.homedir(), '.commitgenrc'),
+    ];
+
+    for (const candidate of globalCandidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    // If no config found, default to global config location
+    return path.join(os.homedir(), '.commitgenrc.json');
   }
 
   private loadConfig(): CommitGenConfig {
@@ -89,9 +101,14 @@ export class ConfigManager {
         throw new Error(`Failed to parse ${configPath}: ${e}`);
       }
     } else {
+      const isGlobalPath = configPath.startsWith(os.homedir());
       throw new Error(
-        `Configuration file not found at ${configPath}\n` +
-        `Create a .commitgenrc.json file with your model configuration.`
+        `Configuration file not found at ${configPath}\n\n` +
+        `To use commitgen globally, create a global config:\n` +
+        `  ${path.join(os.homedir(), '.commitgenrc.json')}\n\n` +
+        `Or create a project-specific config:\n` +
+        `  ${path.join(process.cwd(), '.commitgenrc.json')}\n\n` +
+        `Run 'cgen init' to create a ${isGlobalPath ? 'global' : 'local'} config file.`
       );
     }
 

@@ -16,9 +16,40 @@ For OpenRouter:
 - Get API key from https://openrouter.ai/keys
 - Set in config or as environment variable: `export OPENROUTER_API_KEY="your-key"` (add to `~/.bashrc` or `~/.zshrc` to persist)
 
+## First Time Setup
+
+**IMPORTANT:** After installation, run the setup wizard to create your configuration:
+
+```bash
+# Create global config (recommended - works in all repos)
+cgen init --global
+
+# Or create project-specific config
+cgen init --local
+```
+
+The wizard will guide you through:
+1. Choosing between Ollama (local) or OpenRouter (cloud)
+2. Configuring your model
+3. Setting up API keys (if using OpenRouter)
+
+**Without running `cgen init`, you'll get a "Configuration file not found" error.**
+
 ## Configuration
 
-Create `.commitgenrc.json`:
+The setup wizard creates a `.commitgenrc.json` file for you. You can also create it manually.
+
+### Config Locations
+
+CommitGen looks for config in this order:
+1. **Local** (project-specific): `./.commitgenrc.json` - overrides global config
+2. **Global** (user-wide): `~/.commitgenrc.json` - works in all repos
+
+**Recommended:** Use global config (`cgen init --global`) and only create local configs when you need project-specific settings.
+
+### Manual Configuration
+
+If you prefer to create the config manually instead of using `cgen init`:
 
 ```json
 {
@@ -70,6 +101,11 @@ Create `.commitgenrc.json`:
 ## Usage
 
 ```bash
+# First time setup
+cgen init --global      # Create global config (recommended)
+cgen init --local       # Create project-specific config
+
+# Daily usage
 cgen                    # Interactive commit wizard
 cgen models             # List all configured models
 cgen use <model-name>   # Switch to a different model

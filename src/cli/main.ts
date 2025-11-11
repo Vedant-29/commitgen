@@ -274,6 +274,179 @@ program
     }
   });
 
+// Init command - create initial config file
+program
+  .command('init')
+  .description('Create a configuration file')
+  .option('-g, --global', 'Create global config in home directory')
+  .option('-l, --local', 'Create local config in current directory')
+  .action(async (options) => {
+    try {
+      const enquirer = require('enquirer');
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+
+      // Determine config path
+      let configPath: string;
+      let scope: string;
+
+      if (options.global) {
+        configPath = path.join(os.homedir(), '.commitgenrc.json');
+        scope = 'global';
+      } else if (options.local) {
+        configPath = path.join(process.cwd(), '.commitgenrc.json');
+        scope = 'local';
+      } else {
+        // Ask user
+        const { configScope } = await enquirer.prompt({
+          type: 'select',
+          name: 'configScope',
+          message: 'Where should the config be created?',
+          choices: [
+            { name: 'global', message: `Global (${path.join(os.homedir(), '.commitgenrc.json')})` },
+            { name: 'local', message: `Local (${path.join(process.cwd(), '.commitgenrc.json')})` }
+          ]
+        });
+        scope = configScope;
+        configPath = scope === 'global'
+          ? path.join(os.homedir(), '.commitgenrc.json')
+          : path.join(process.cwd(), '.commitgenrc.json');
+      }
+
+      // Check if config already exists
+      if (fs.existsSync(configPath)) {
+        const { overwrite } = await enquirer.prompt({
+          type: 'confirm',
+          name: 'overwrite',
+          message: `Config already exists at ${configPath}. Overwrite?`,
+          initial: false
+        });
+
+        if (!overwrite) {
+          Logger.info('Cancelled');
+          process.exit(0);
+        }
+      }
+
+      console.log(chalk.bold('\nInitialize CommitGen Configuration\n'));
+
+      // Prompt for initial model setup
+      const answers: any = await enquirer.prompt([
+        {
+          type: 'select',
+          name: 'provider',
+          message: 'Choose your primary AI provider:',
+          choices: [
+            { name: 'ollama', message: 'Ollama (Local)' },
+            { name: 'openrouter', message: 'OpenRouter (Cloud)' }
+          ]
+        },
+        {
+          type: 'input',
+          name: 'model',
+          message: 'Model identifier:',
+          initial: (state: any) =>
+            state.answers.provider === 'ollama' ? 'qwen2.5-coder:7b' : 'openai/gpt-4o-mini',
+          validate: (input: string) => input ? true : 'Model identifier is required'
+        },
+        {
+          type: 'input',
+          name: 'baseUrl',
+          message: 'Ollama base URL:',
+          initial: 'http://localhost:11434',
+          skip: (state: any) => state.answers.provider !== 'ollama'
+        },
+        {
+          type: 'password',
+          name: 'apiKey',
+          message: 'OpenRouter API Key:',
+          skip: (state: any) => state.answers.provider !== 'openrouter'
+        }
+      ]);
+
+      // Create default config
+      const defaultConfig: any = {
+        temperature: 0.2,
+        maxTokens: 500,
+        language: 'en',
+        emoji: false,
+        ui: {
+          theme: 'auto',
+          accent: 'cyan',
+          useGradients: true,
+          bannerStyle: 'block',
+          unicode: true
+        },
+        checks: {
+          build: {
+            enabled: false,
+            command: 'npm run build',
+            blocking: true,
+            message: 'Building project...',
+            timeout: 300000
+          },
+          lint: {
+            enabled: false,
+            command: 'npm run lint',
+            blocking: false,
+            message: 'Linting code...',
+            autofix: 'npm run lint:fix',
+            timeout: 60000
+          },
+          test: {
+            enabled: false,
+            command: 'npm test',
+            blocking: true,
+            message: 'Running tests...',
+            timeout: 300000
+          },
+          typecheck: {
+            enabled: false,
+            command: 'tsc --noEmit',
+            blocking: false,
+            message: 'Type checking...',
+            timeout: 60000
+          }
+        },
+        prompts: {
+          askPush: true,
+          askStage: true,
+          showChecks: true
+        },
+        activeModel: answers.provider === 'ollama' ? 'local-qwen' : 'cloud-gpt4o-mini',
+        models: {}
+      };
+
+      // Add the configured model
+      if (answers.provider === 'ollama') {
+        defaultConfig.models['local-qwen'] = {
+          provider: 'ollama',
+          model: answers.model,
+          baseUrl: answers.baseUrl
+        };
+      } else {
+        defaultConfig.models['cloud-gpt4o-mini'] = {
+          provider: 'openrouter',
+          model: answers.model,
+          apiKey: answers.apiKey
+        };
+      }
+
+      // Write config file
+      fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf-8');
+
+      Logger.success(`\n✓ Configuration created at ${chalk.cyan(configPath)}`);
+      console.log(chalk.dim(`\nYou can now use ${chalk.cyan('cgen')} to generate commit messages!`));
+      console.log(chalk.dim(`Add more models with ${chalk.cyan('cgen add-model')}\n`));
+    } catch (error: any) {
+      if (error.message && error.message !== '') {
+        Logger.error(error.message);
+      }
+      process.exit(1);
+    }
+  });
+
 // Add model command - add a new model interactively
 program
   .command('add-model')
@@ -414,6 +587,7 @@ program.addHelpText(
   `
 ${chalk.bold('Commands:')}
   ${chalk.cyan('cgen')}                    ${chalk.dim('# Interactive commit wizard')}
+  ${chalk.cyan('cgen init')}               ${chalk.dim('# Create configuration file')}
   ${chalk.cyan('cgen check')}              ${chalk.dim('# Run pre-commit checks')}
   ${chalk.cyan('cgen doctor')}             ${chalk.dim('# Diagnose setup issues')}
   ${chalk.cyan('cgen models')}             ${chalk.dim('# List all configured models')}
@@ -421,6 +595,12 @@ ${chalk.bold('Commands:')}
   ${chalk.cyan('cgen use <model>')}        ${chalk.dim('# Switch active model')}
 
 ${chalk.bold('Examples:')}
+  ${chalk.dim('# First time setup (global config)')}
+  $ cgen init --global
+
+  ${chalk.dim('# Create project-specific config')}
+  $ cgen init --local
+
   ${chalk.dim('# Interactive commit')}
   $ cgen
 
@@ -437,7 +617,8 @@ ${chalk.bold('Examples:')}
   $ cgen check build lint
 
 ${chalk.bold('Configuration:')}
-  Edit ${chalk.cyan('.commitgenrc.json')} to configure models and checks.
+  Global config: ${chalk.cyan('~/.commitgenrc.json')}
+  Local config:  ${chalk.cyan('.commitgenrc.json')} (in project directory)
   See ${chalk.cyan('README.md')} for full documentation.
 `
 );
