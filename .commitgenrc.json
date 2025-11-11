@@ -1,0 +1,97 @@
+{
+  "temperature": 0.2,
+  "maxTokens": 500,
+  "language": "en",
+  "emoji": false,
+  "ui": {
+    "theme": "auto",
+    "accent": "cyan",
+    "useGradients": true,
+    "bannerStyle": "block",
+    "unicode": true
+  },
+  "checks": {
+    "build": {
+      "enabled": true,
+      "command": "npm run build",
+      "blocking": true,
+      "message": "Building project...",
+      "timeout": 300000
+    },
+    "lint": {
+      "enabled": false,
+      "command": "npm run lint",
+      "blocking": false,
+      "message": "Linting code...",
+      "autofix": "npm run lint:fix",
+      "timeout": 60000
+    },
+    "test": {
+      "enabled": false,
+      "command": "npm test",
+      "blocking": true,
+      "message": "Running tests...",
+      "timeout": 300000
+    },
+    "typecheck": {
+      "enabled": false,
+      "command": "tsc --noEmit",
+      "blocking": false,
+      "message": "Type checking...",
+      "timeout": 60000
+    }
+  },
+  "prompts": {
+    "askPush": true,
+    "askStage": true,
+    "showChecks": true
+  },
+  "activeModel": "cloud-gpt40-mini",
+  "fallbackModel": "local-qwen",
+  "models": {
+    "local-qwen": {
+      "provider": "ollama",
+      "model": "qwen2.5-coder:7b",
+      "baseUrl": "http://localhost:11434"
+    },
+    "local-codellama": {
+      "provider": "ollama",
+      "model": "codellama:7b",
+      "baseUrl": "http://localhost:11434"
+    },
+    "local-llama": {
+      "provider": "ollama",
+      "model": "llama3.2:3b",
+      "baseUrl": "http://localhost:11434"
+    },
+    "cloud-gpt35": {
+      "provider": "openrouter",
+      "model": "openai/gpt-3.5-turbo",
+      "apiKey": "your-openrouter-api-key"
+    },
+    "cloud-gpt4": {
+      "provider": "openrouter",
+      "model": "openai/gpt-4-turbo",
+      "apiKey": "your-openrouter-api-key"
+    },
+    "cloud-gpt40-mini": {
+      "provider": "openrouter",
+      "model": "openai/gpt-4o-mini",
+      "apiKey": "your-openrouter-api-key"
+    },
+    "cloud-claude": {
+      "provider": "openrouter",
+      "model": "anthropic/claude-3-haiku",
+      "apiKey": "your-openrouter-api-key"
+    },
+    "cloud-gemini": {
+      "provider": "openrouter",
+      "model": "google/gemini-pro",
+      "apiKey": "your-openrouter-api-key"
+    }
+  },
+  "provider": "ollama",
+  "model": "qwen2.5-coder:7b",
+  "baseUrl": "http://localhost:11434",
+  "apiKey": "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"
+}
