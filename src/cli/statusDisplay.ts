@@ -39,12 +39,12 @@ export class StatusDisplay {
     const branchInfo = this.getBranchSummary();
     UI.section('Git');
     if (branchInfo) {
-      UI.listItem(`${c.heading('Branch')}: ${c.accent(branchInfo.branch)}`);
+      UI.listItem(`${c.text('Branch')}: ${c.muted(branchInfo.branch)}`);
       if (branchInfo.ahead > 0) {
-        UI.listItem(`${c.heading('Ahead')}: ${c.success(String(branchInfo.ahead))}`, 1);
+        UI.listItem(`${c.text('Ahead')}: ${c.muted(String(branchInfo.ahead))}`, 1);
       }
       if (branchInfo.behind > 0) {
-        UI.listItem(`${c.heading('Behind')}: ${c.warning(String(branchInfo.behind))}`, 1);
+        UI.listItem(`${c.text('Behind')}: ${c.error(String(branchInfo.behind))}`, 1);
       }
     } else {
       UI.listItem(c.warning('Unable to determine branch information'));
@@ -58,13 +58,13 @@ export class StatusDisplay {
       UI.listItem(c.muted('No changes detected'));
     } else {
       if (workingTree.staged > 0) {
-        UI.listItem(`${c.heading('Staged')}: ${c.accent(String(workingTree.staged))}`);
+        UI.listItem(`${c.text('Staged')}: ${c.muted(String(workingTree.staged))}`);
       }
       if (workingTree.unstaged > 0) {
-        UI.listItem(`${c.heading('Unstaged')}: ${c.warning(String(workingTree.unstaged))}`);
+        UI.listItem(`${c.text('Unstaged')}: ${c.warning(String(workingTree.unstaged))}`);
       }
       if (workingTree.untracked > 0) {
-        UI.listItem(`${c.heading('Untracked')}: ${c.info(String(workingTree.untracked))}`);
+        UI.listItem(`${c.text('Untracked')}: ${c.info(String(workingTree.untracked))}`);
       }
     }
 
@@ -74,13 +74,13 @@ export class StatusDisplay {
     const modelId = activeModelConfig?.model || this.config.model || 'not set';
 
     const activeModelDisplay = activeModelName
-      ? c.accent(activeModelName)
+      ? c.muted(activeModelName)
       : c.warning('Not set');
 
-    UI.listItem(`${c.heading('Active Model')}: ${activeModelDisplay}`);
-    UI.listItem(`${c.heading('Model ID')}: ${c.accent(modelId)}`);
-    UI.listItem(`${c.heading('Provider')}: ${c.accent(this.config.provider || 'not set')}`);
-    UI.listItem(`${c.heading('Temperature')}: ${c.accent(String(this.config.temperature ?? 0.2))}`);
+    UI.listItem(`${c.text('Active Model')}: ${activeModelDisplay}`);
+    UI.listItem(`${c.text('Model ID')}: ${c.muted(modelId)}`);
+    UI.listItem(`${c.text('Provider')}: ${c.muted(this.config.provider || 'not set')}`);
+    UI.listItem(`${c.text('Temperature')}: ${c.muted(String(this.config.temperature ?? 0.2))}`);
 
     UI.section('Checks');
     const checks = this.checkRunner.listChecks();
@@ -91,11 +91,11 @@ export class StatusDisplay {
     } else if (enabledChecks.length === 0) {
       UI.listItem(c.warning('All checks disabled'));
     } else {
-      UI.listItem(`${c.heading('Enabled')}: ${c.accent(enabledChecks.join(', '))}`);
+      UI.listItem(`${c.text('Enabled')}: ${c.muted(enabledChecks.join(', '))}`);
     }
 
     console.log('');
-    console.log(c.muted('Ready to commit? Run:'), c.accent('cgen'));
+    console.log(c.muted('Ready to commit? Run:'), c.text('cgen'));
     console.log('');
   }
 

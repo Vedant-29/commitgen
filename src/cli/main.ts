@@ -292,9 +292,9 @@ program
       const iconForTone = (tone: Tone): string => {
         switch (tone) {
           case 'ok':
-            return c.success('✓');
+            return c.text('•');
           case 'warn':
-            return c.warning('•');
+            return c.warning('!');
           case 'error':
           default:
             return c.error('✗');
@@ -304,7 +304,7 @@ program
       const colorForTone = (tone: Tone) => {
         switch (tone) {
           case 'ok':
-            return c.accent;
+            return c.muted;
           case 'warn':
             return c.warning;
           case 'error':
