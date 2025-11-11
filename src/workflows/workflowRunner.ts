@@ -7,6 +7,7 @@ import { PromptEngine } from '../prompts/promptEngine';
 import { LLMProvider } from '../types';
 import { ResponseValidator } from '../utils/validators';
 import { prompt } from 'enquirer';
+import { promptYesNo } from '../utils/promptUtils';
 
 export class WorkflowRunner {
   private diffCollector: DiffCollector;
@@ -171,14 +172,9 @@ export class WorkflowRunner {
    */
   private async stagePrompt(): Promise<boolean> {
     try {
-      const response: any = await prompt({
-        type: 'confirm',
-        name: 'stage',
-        message: 'Stage all changes?',
-        initial: true,
-      });
+      const shouldStage = await promptYesNo('Stage all changes?', { initial: true });
 
-      if (response.stage) {
+      if (shouldStage) {
         return this.stageAll();
       }
 
@@ -264,14 +260,9 @@ export class WorkflowRunner {
       spinner.stop();
       UI.commitMessage(commitMessage);
 
-      const answer: any = await prompt({
-        type: 'confirm',
-        name: 'accept',
-        message: 'Accept this commit message?',
-        initial: true,
-      });
+      const acceptCommit = await promptYesNo('Accept this commit message?', { initial: true });
 
-      if (!answer.accept) {
+      if (!acceptCommit) {
         UI.info('Commit cancelled');
         return false;
       }
@@ -404,14 +395,9 @@ export class WorkflowRunner {
    */
   private async pushPrompt(): Promise<boolean> {
     try {
-      const answer: any = await prompt({
-        type: 'confirm',
-        name: 'push',
-        message: 'Push to remote?',
-        initial: true,
-      });
+      const shouldPush = await promptYesNo('Push to remote?', { initial: true });
 
-      if (answer.push) {
+      if (shouldPush) {
         return this.push();
       }
 

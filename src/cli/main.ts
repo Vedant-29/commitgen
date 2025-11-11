@@ -2,6 +2,7 @@
 
 import { program } from 'commander';
 import chalk from 'chalk';
+import { execSync } from 'child_process';
 import { ConfigManager } from '../config/configManager';
 import { DiffCollector } from '../git/diffCollector';
 import { ProviderFactory } from '../providers';
@@ -11,6 +12,8 @@ import { StatusDisplay } from './statusDisplay';
 import { WizardMode } from './wizard';
 import { Logger } from '../utils/logger';
 import { UI } from '../utils/ui';
+import { promptYesNo } from '../utils/promptUtils';
+import { ThemeManager } from '../utils/theme';
 
 // Force color output
 if (!process.env.FORCE_COLOR && process.env.NO_COLOR !== '1') {
@@ -161,49 +164,161 @@ program
   .description('Check system health')
   .action(async () => {
     try {
-      console.log(chalk.bold('\nSystem Health Check\n'));
-
       const configManager = new ConfigManager();
       const config = configManager.getConfig();
 
-      // Git check
+      UI.init(config.ui);
+      UI.compactBanner('System Health');
+
+      type Tone = 'ok' | 'warn' | 'error';
+      interface HealthRow {
+        label: string;
+        value: string;
+        tone: Tone;
+      }
+
+      const c = ThemeManager.theme().colors;
+      const rows: HealthRow[] = [];
+
+      // Git status
+      const diffCollector = new DiffCollector();
+      let isRepository = false;
       try {
-        const diffCollector = new DiffCollector();
-        const isRepo = await diffCollector.isRepository();
-        if (isRepo) {
-          Logger.success('✓ Git repository');
-        } else {
-          Logger.error('✗ Not a git repository');
-        }
+        isRepository = await diffCollector.isRepository();
       } catch {
-        Logger.error('✗ Git not found');
+        isRepository = false;
       }
 
-      // Provider check
-      try {
-        const provider = ProviderFactory.create(config);
-        const valid = await provider.validateConfig();
-        if (valid) {
-          Logger.success(`✓ ${config.provider} provider (${config.baseUrl || 'cloud'})`);
-        } else {
-          Logger.error(`✗ ${config.provider} provider not available`);
+      if (!isRepository) {
+        rows.push({
+          label: 'Git',
+          value: 'Not a git repository',
+          tone: 'error',
+        });
+      } else {
+        rows.push({
+          label: 'Git',
+          value: 'Repository detected',
+          tone: 'ok',
+        });
+
+        try {
+          const statusOutput = execSync('git status --porcelain', {
+            encoding: 'utf8',
+          }).trim();
+          const hasChanges = statusOutput.length > 0;
+          rows.push({
+            label: 'Working Tree',
+            value: hasChanges ? 'Changes pending' : 'Clean',
+            tone: hasChanges ? 'warn' : 'ok',
+          });
+        } catch {
+          rows.push({
+            label: 'Working Tree',
+            value: 'Unable to determine status',
+            tone: 'warn',
+          });
         }
-      } catch (error: any) {
-        Logger.error(`✗ Provider error: ${error.message}`);
       }
 
-      // Model check
-      Logger.info(`Active Model: ${config.activeModel || 'not set'}`);
-      Logger.info(`Provider: ${config.provider || 'not set'}`);
-      Logger.info(`Model: ${config.model || 'not set'}`);
-      Logger.info(`Temperature: ${config.temperature || 0.2}`);
+      // Provider status
+      let providerTone: Tone = 'warn';
+      let providerValue = 'Not configured';
 
-      // Check system
+      if (config.provider) {
+        try {
+          const provider = ProviderFactory.create(config);
+          const valid = await provider.validateConfig();
+          const target = config.baseUrl || 'cloud';
+          providerValue = `${config.provider} (${target})`;
+          providerTone = valid ? 'ok' : 'error';
+
+          if (!valid) {
+            providerValue = `${providerValue} - unavailable`;
+          }
+        } catch (error: any) {
+          providerTone = 'error';
+          providerValue = `Error: ${error.message}`;
+        }
+      }
+
+      rows.push({
+        label: 'Provider',
+        value: providerValue,
+        tone: providerTone,
+      });
+
+      // Active model summary
+      const activeModelName = config.activeModel;
+      const activeModelConfig = activeModelName ? config.models?.[activeModelName] : undefined;
+      let modelTone: Tone = 'warn';
+      let modelValue = 'Not set';
+
+      if (activeModelName) {
+        const modelId = activeModelConfig?.model || config.model;
+        modelValue = modelId ? `${activeModelName} (${modelId})` : activeModelName;
+        modelTone = 'ok';
+      }
+
+      rows.push({
+        label: 'Active Model',
+        value: modelValue,
+        tone: modelTone,
+      });
+
+      if (typeof config.temperature === 'number') {
+        rows.push({
+          label: 'Temperature',
+          value: config.temperature.toString(),
+          tone: 'ok',
+        });
+      }
+
+      // Checks summary
       const checkRunner = new CheckRunner(config.checks || {});
       const checks = checkRunner.listChecks();
-      Logger.info(`\nChecks configured: ${checks.length}`);
-      const enabled = checks.filter((c) => c.enabled);
-      Logger.info(`  Enabled: ${enabled.length}`);
+
+      if (checks.length > 0) {
+        const enabledChecks = checks.filter((check) => check.enabled).map((check) => check.name);
+        rows.push({
+          label: 'Checks',
+          value: enabledChecks.length
+            ? `${enabledChecks.length} enabled (${enabledChecks.join(', ')})`
+            : 'All checks disabled',
+          tone: enabledChecks.length ? 'ok' : 'warn',
+        });
+      }
+
+      const iconForTone = (tone: Tone): string => {
+        switch (tone) {
+          case 'ok':
+            return c.success('✓');
+          case 'warn':
+            return c.warning('•');
+          case 'error':
+          default:
+            return c.error('✗');
+        }
+      };
+
+      const colorForTone = (tone: Tone) => {
+        switch (tone) {
+          case 'ok':
+            return c.accent;
+          case 'warn':
+            return c.warning;
+          case 'error':
+          default:
+            return c.error;
+        }
+      };
+
+      rows.forEach(({ label, value, tone }) => {
+        const icon = iconForTone(tone);
+        const labelText = c.muted(`${label}:`);
+        const valueText = colorForTone(tone)(value);
+        console.log(`${icon} ${labelText} ${valueText}`);
+      });
 
       console.log('');
     } catch (error: any) {
@@ -316,11 +431,8 @@ program
 
       // Check if config already exists
       if (fs.existsSync(configPath)) {
-        const { overwrite } = await enquirer.prompt({
-          type: 'confirm',
-          name: 'overwrite',
-          message: `Config already exists at ${configPath}. Overwrite?`,
-          initial: false
+        const overwrite = await promptYesNo(`Config already exists at ${configPath}. Overwrite?`, {
+          initial: false,
         });
 
         if (!overwrite) {

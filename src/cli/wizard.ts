@@ -9,6 +9,7 @@ import { ConfigManager } from '../config/configManager';
 import { DiffCollector } from '../git/diffCollector';
 import { execSync } from 'child_process';
 import chalk from 'chalk';
+import { promptYesNo } from '../utils/promptUtils';
 
 export class WizardMode {
   private checkRunner: CheckRunner;
@@ -106,14 +107,9 @@ export class WizardMode {
     try {
       // Step 1: Stage files?
       if (this.config.prompts?.askStage !== false) {
-        const stageResponse: any = await prompt({
-          type: 'confirm',
-          name: 'stage',
-          message: 'Stage all changes?',
-          initial: true,
-        });
+        const shouldStage = await promptYesNo('Stage all changes?', { initial: true });
 
-        if (stageResponse.stage) {
+        if (shouldStage) {
           const result = await this.workflowRunner.executeWorkflow({
             steps: ['stage:all'],
             interactive: false,
@@ -134,14 +130,9 @@ export class WizardMode {
           .map((c) => c.name);
 
         if (enabledChecks.length > 0) {
-          const runChecks: any = await prompt({
-            type: 'confirm',
-            name: 'run',
-            message: 'Run pre-commit checks?',
-            initial: true,
-          });
+          const shouldRunChecks = await promptYesNo('Run pre-commit checks?', { initial: true });
 
-          if (runChecks.run) {
+          if (shouldRunChecks) {
             const checkSummary = await this.checkRunner.runChecks(enabledChecks);
             this.checkRunner.displaySummary(checkSummary);
 
@@ -256,14 +247,9 @@ export class WizardMode {
       }
 
       // Ask if user wants to configure more
-      const continueResponse: any = await prompt({
-        type: 'confirm',
-        name: 'continue',
-        message: 'Configure more settings?',
-        initial: false,
-      });
+      const continueConfig = await promptYesNo('Configure more settings?', { initial: false });
 
-      if (continueResponse.continue) {
+      if (continueConfig) {
         await this.runConfig();
       }
     } catch (error: any) {
@@ -316,11 +302,8 @@ export class WizardMode {
       initial: config.maxTokens,
     });
 
-    const emojiResponse: any = await prompt({
-      type: 'confirm',
-      name: 'emoji',
-      message: 'Use emojis in commit messages?',
-      initial: config.emoji,
+    const emoji = await promptYesNo('Use emojis in commit messages?', {
+      initial: config.emoji ?? false,
     });
 
     // Update config
@@ -328,7 +311,7 @@ export class WizardMode {
     configManager.set('baseUrl', baseUrlResponse.baseUrl);
     configManager.set('temperature', temperatureResponse.temperature);
     configManager.set('maxTokens', maxTokensResponse.maxTokens);
-    configManager.set('emoji', emojiResponse.emoji);
+    configManager.set('emoji', emoji);
 
     // Save
     configManager.save();
@@ -348,10 +331,7 @@ export class WizardMode {
     console.log('');
 
     // Build check
-    const buildEnabled: any = await prompt({
-      type: 'confirm',
-      name: 'enabled',
-      message: 'Enable build check?',
+    const buildEnabled = await promptYesNo('Enable build check?', {
       initial: config.checks?.build?.enabled ?? true,
     });
 
@@ -362,18 +342,12 @@ export class WizardMode {
       initial: config.checks?.build?.command ?? 'npm run build',
     });
 
-    const buildBlocking: any = await prompt({
-      type: 'confirm',
-      name: 'blocking',
-      message: 'Should build check be blocking?',
+    const buildBlocking = await promptYesNo('Should build check be blocking?', {
       initial: config.checks?.build?.blocking ?? true,
     });
 
     // Lint check
-    const lintEnabled: any = await prompt({
-      type: 'confirm',
-      name: 'enabled',
-      message: 'Enable lint check?',
+    const lintEnabled = await promptYesNo('Enable lint check?', {
       initial: config.checks?.lint?.enabled ?? false,
     });
 
@@ -384,18 +358,12 @@ export class WizardMode {
       initial: config.checks?.lint?.command ?? 'npm run lint',
     });
 
-    const lintBlocking: any = await prompt({
-      type: 'confirm',
-      name: 'blocking',
-      message: 'Should lint check be blocking?',
+    const lintBlocking = await promptYesNo('Should lint check be blocking?', {
       initial: config.checks?.lint?.blocking ?? false,
     });
 
     // Test check
-    const testEnabled: any = await prompt({
-      type: 'confirm',
-      name: 'enabled',
-      message: 'Enable test check?',
+    const testEnabled = await promptYesNo('Enable test check?', {
       initial: config.checks?.test?.enabled ?? false,
     });
 
@@ -406,18 +374,12 @@ export class WizardMode {
       initial: config.checks?.test?.command ?? 'npm test',
     });
 
-    const testBlocking: any = await prompt({
-      type: 'confirm',
-      name: 'blocking',
-      message: 'Should test check be blocking?',
+    const testBlocking = await promptYesNo('Should test check be blocking?', {
       initial: config.checks?.test?.blocking ?? true,
     });
 
     // Typecheck check
-    const typecheckEnabled: any = await prompt({
-      type: 'confirm',
-      name: 'enabled',
-      message: 'Enable typecheck?',
+    const typecheckEnabled = await promptYesNo('Enable typecheck?', {
       initial: config.checks?.typecheck?.enabled ?? false,
     });
 
@@ -428,37 +390,34 @@ export class WizardMode {
       initial: config.checks?.typecheck?.command ?? 'tsc --noEmit',
     });
 
-    const typecheckBlocking: any = await prompt({
-      type: 'confirm',
-      name: 'blocking',
-      message: 'Should typecheck be blocking?',
+    const typecheckBlocking = await promptYesNo('Should typecheck be blocking?', {
       initial: config.checks?.typecheck?.blocking ?? false,
     });
 
     // Update config
     configManager.set('checks', {
       build: {
-        enabled: buildEnabled.enabled,
+        enabled: buildEnabled,
         command: buildCommand.command,
-        blocking: buildBlocking.blocking,
+        blocking: buildBlocking,
         message: 'Building project...',
       },
       lint: {
-        enabled: lintEnabled.enabled,
+        enabled: lintEnabled,
         command: lintCommand.command,
-        blocking: lintBlocking.blocking,
+        blocking: lintBlocking,
         message: 'Linting code...',
       },
       test: {
-        enabled: testEnabled.enabled,
+        enabled: testEnabled,
         command: testCommand.command,
-        blocking: testBlocking.blocking,
+        blocking: testBlocking,
         message: 'Running tests...',
       },
       typecheck: {
-        enabled: typecheckEnabled.enabled,
+        enabled: typecheckEnabled,
         command: typecheckCommand.command,
-        blocking: typecheckBlocking.blocking,
+        blocking: typecheckBlocking,
         message: 'Type checking...',
       },
     });
@@ -480,32 +439,23 @@ export class WizardMode {
     console.log(chalk.dim('Configure when the tool should ask for confirmation'));
     console.log('');
 
-    const askStage: any = await prompt({
-      type: 'confirm',
-      name: 'value',
-      message: 'Ask before staging files?',
+    const askStage = await promptYesNo('Ask before staging files?', {
       initial: config.prompts?.askStage ?? true,
     });
 
-    const showChecks: any = await prompt({
-      type: 'confirm',
-      name: 'value',
-      message: 'Ask before running checks?',
+    const showChecks = await promptYesNo('Ask before running checks?', {
       initial: config.prompts?.showChecks ?? true,
     });
 
-    const askPush: any = await prompt({
-      type: 'confirm',
-      name: 'value',
-      message: 'Ask before pushing to remote?',
+    const askPush = await promptYesNo('Ask before pushing to remote?', {
       initial: config.prompts?.askPush ?? true,
     });
 
     // Update config
     configManager.set('prompts', {
-      askStage: askStage.value,
-      showChecks: showChecks.value,
-      askPush: askPush.value,
+      askStage,
+      showChecks,
+      askPush,
     });
 
     // Save
