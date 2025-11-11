@@ -93,5 +93,5 @@
   "provider": "ollama",
   "model": "qwen2.5-coder:7b",
   "baseUrl": "http://localhost:11434",
-  "apiKey": "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"
+  "apiKey": "your-openrouter-api-key"
 }
