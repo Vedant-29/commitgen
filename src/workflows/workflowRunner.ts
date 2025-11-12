@@ -35,18 +35,32 @@ export class WorkflowRunner {
    * Generate text with fallback support
    */
   private async generateTextWithFallback(messages: any[]): Promise<string> {
+    const startTime = Date.now();
+    Logger.info('Starting AI text generation...');
+    Logger.debug(`Message count: ${messages.length}`);
+    
     try {
-      return await this.provider.generateText(messages);
+      const result = await this.provider.generateText(messages);
+      const elapsed = Date.now() - startTime;
+      Logger.info(`AI generation completed in ${elapsed}ms`);
+      return result;
     } catch (error: any) {
+      const elapsed = Date.now() - startTime;
+      Logger.error(`AI generation failed after ${elapsed}ms: ${error.message}`);
+      
       // If primary provider fails and fallback is available, try fallback
       if (this.fallbackProvider) {
         Logger.warn(`Primary provider failed: ${error.message}`);
         Logger.info('Attempting to use fallback model...');
         try {
+          const fallbackStartTime = Date.now();
           const result = await this.fallbackProvider.generateText(messages);
-          Logger.success('Fallback model succeeded');
+          const fallbackElapsed = Date.now() - fallbackStartTime;
+          Logger.success(`Fallback model succeeded in ${fallbackElapsed}ms`);
           return result;
         } catch (fallbackError: any) {
+          const fallbackElapsed = Date.now() - startTime;
+          Logger.error(`Fallback also failed after ${fallbackElapsed}ms: ${fallbackError.message}`);
           throw new Error(`Both primary and fallback providers failed. Primary: ${error.message}, Fallback: ${fallbackError.message}`);
         }
       }
@@ -221,9 +235,17 @@ export class WorkflowRunner {
       const spinner = UI.spinner('Analyzing changes and generating commit message...');
       spinner.start();
 
+      Logger.info('Building prompt from diff context...');
       const messages = this.promptEngine.buildBracketedCommitPrompt(diffContext);
+      Logger.debug(`Prompt built with ${messages.length} message(s)`);
+      
+      Logger.info('Calling AI provider to generate commit message...');
       const response = await this.generateTextWithFallback(messages);
+      Logger.debug(`Raw response length: ${response.length} characters`);
+      
+      Logger.info('Parsing commit message from response...');
       const commitMessage = ResponseValidator.parseCommitMessage(response);
+      Logger.debug(`Parsed commit message: ${commitMessage.substring(0, 100)}...`);
 
       spinner.stop();
       UI.commitMessage(commitMessage);
@@ -253,9 +275,17 @@ export class WorkflowRunner {
       const spinner = UI.spinner('Generating commit message with AI...');
       spinner.start();
 
+      Logger.info('Building prompt from diff context...');
       const messages = this.promptEngine.buildBracketedCommitPrompt(diffContext);
+      Logger.debug(`Prompt built with ${messages.length} message(s)`);
+      
+      Logger.info('Calling AI provider to generate commit message...');
       const response = await this.generateTextWithFallback(messages);
+      Logger.debug(`Raw response length: ${response.length} characters`);
+      
+      Logger.info('Parsing commit message from response...');
       const commitMessage = ResponseValidator.parseCommitMessage(response);
+      Logger.debug(`Parsed commit message: ${commitMessage.substring(0, 100)}...`);
 
       spinner.stop();
       UI.commitMessage(commitMessage);
@@ -301,18 +331,25 @@ export class WorkflowRunner {
         );
         spinner.start();
 
+        Logger.info(`Building prompt from diff context (attempt ${attempts})...`);
         const messages = this.promptEngine.buildBracketedCommitPrompt(diffContext);
 
         // Add variation instruction on retry
         if (attempts > 1 && previousMessages.length > 0) {
+          Logger.debug(`Adding variation instruction to avoid previous messages`);
           messages.push({
             role: 'user',
             content: `Previous attempt(s) generated: ${previousMessages.join(', ')}. Please generate a DIFFERENT commit message with alternative wording or perspective.`
           });
         }
 
+        Logger.info(`Calling AI provider to generate commit message (attempt ${attempts})...`);
         const response = await this.generateTextWithFallback(messages);
+        Logger.debug(`Raw response length: ${response.length} characters`);
+        
+        Logger.info('Parsing commit message from response...');
         let commitMessage = ResponseValidator.parseCommitMessage(response);
+        Logger.debug(`Parsed commit message: ${commitMessage.substring(0, 100)}...`);
 
         spinner.stop();
         UI.commitMessage(commitMessage);

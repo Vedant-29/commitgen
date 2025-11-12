@@ -110,7 +110,7 @@ export class DiffCollector {
   }
 
   private getFileChanges(ignorePatterns: string[]): FileChange[] {
-    try {``
+    try {
       // Get file status (A/M/D/R)
       const statusOutput = execSync('git diff --staged --name-status', {
         encoding: 'utf8',
