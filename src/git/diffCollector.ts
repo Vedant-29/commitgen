@@ -30,6 +30,7 @@ export interface DiffContext {
 
 export class DiffCollector {
   private readonly maxDiffSize = 500000; // 500KB
+  private readonly execMaxBuffer = 10000 * 1024 * 1024; // 50MB for large diffs
   private readonly defaultIgnorePatterns = [
     '*-lock.*',
     '*.lock',
@@ -45,6 +46,7 @@ export class DiffCollector {
       let diff = execSync('git diff --staged --no-ext-diff', {
         encoding: 'utf8',
         timeout: 10000,
+        maxBuffer: this.execMaxBuffer,
       });
 
       // Filter files based on .commitignore
@@ -89,6 +91,7 @@ export class DiffCollector {
       const statOutput = execSync('git diff --staged --shortstat', {
         encoding: 'utf8',
         timeout: 5000,
+        maxBuffer: this.execMaxBuffer,
       }).trim();
 
       // Parse: "3 files changed, 45 insertions(+), 12 deletions(-)"
@@ -107,17 +110,19 @@ export class DiffCollector {
   }
 
   private getFileChanges(ignorePatterns: string[]): FileChange[] {
-    try {
+    try {``
       // Get file status (A/M/D/R)
       const statusOutput = execSync('git diff --staged --name-status', {
         encoding: 'utf8',
         timeout: 5000,
+        maxBuffer: this.execMaxBuffer,
       }).trim();
 
       // Get per-file stats
       const numstatOutput = execSync('git diff --staged --numstat', {
         encoding: 'utf8',
         timeout: 5000,
+        maxBuffer: this.execMaxBuffer,
       }).trim();
 
       const statusLines = statusOutput.split('\n').filter(l => l);
@@ -261,12 +266,11 @@ export class DiffCollector {
 
   async hasStagedChanges(): Promise<boolean> {
     try {
-      const output = execSync('git diff --staged --exit-code', {
-        encoding: 'utf8',
-      });
-      return output.length > 0;
-    } catch {
-      // Exit code 1 means there are changes
+      // Quietly check for changes (no stdout to avoid large buffers)
+      execSync('git diff --staged --quiet', { stdio: 'ignore' });
+      return false; // exit code 0 => no changes
+    } catch (error) {
+      // exit code 1 => there are changes; any other error we treat as "has changes"
       return true;
     }
   }
