@@ -1,16 +1,10 @@
 <div align="center">
 
-  <div>
+# CommitGen
 
-    <h1 align="center">CommitGen</h1>
+## AI-powered commit message generator using local Ollama or cloud OpenRouter models
 
-  </div>
-
-	<h2>AI-powered commit message generator using local Ollama or cloud OpenRouter models</h2>
-
-	<p>Auto-generate meaningful commits in a second 🤯🔫</p>
-
-  <a href="https://www.npmjs.com/package/commitgen"><img src="https://img.shields.io/npm/v/commitgen" alt="Current version"></a>
+Auto-generate meaningful commits in a second 🤯🔫
 
 </div>
 
