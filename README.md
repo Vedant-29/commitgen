@@ -1,215 +1,261 @@
-<div align="center">
+# commitgen
 
-# CommitGen
+A local-first CLI that turns your staged git changes into a tight, bracketed
+commit message in about a second. `git add` your work, run `cgen`, get a
+sensible `[feature|bugfix|refactor] description` line and a clean commit.
+Backs onto a local Ollama model by default and falls back to OpenRouter
+when configured.
 
-## AI-powered commit message generator using local Ollama or cloud OpenRouter models
+## Table of contents
 
-Auto-generate meaningful commits in a second 🤯🔫
-
-</div>
+1. [What this builds](#what-this-builds)
+2. [Architecture](#architecture)
+3. [Key design decisions](#key-design-decisions)
+4. [Setup](#setup)
+5. [Usage](#usage)
+6. [Configuration](#configuration)
+7. [Repository tour](#repository-tour)
 
 ---
 
-## Setup CommitGen as a CLI tool
+## What this builds
 
-You can use CommitGen by simply running it via the CLI like this `cgen`. 2 seconds and your staged changes are committed with a meaningful message.
+A single command — `cgen` — that owns the path from "I'm done coding" to
+"the commit is in." Four properties make it more than a wrapper around
+`git commit -m`:
 
-1. Install CommitGen globally to use in any repository:
+- **Local-first.** Default provider is a local Ollama model
+  (`qwen2.5-coder:7b` out of the box). Nothing leaves your machine unless
+  you opt into OpenRouter. A weak laptop with no network still produces
+  a commit message.
+- **Bracketed, single-tag taxonomy.** The prompt is constrained to one
+  of three tags — `feature`, `bugfix`, `refactor` — with a few-shot
+  block that shows the diff→commit mapping for each. No 27-flavor
+  Conventional Commits soup; just the three a reader actually
+  distinguishes.
+- **Provider fallback.** Configure a `fallbackModel` and the workflow
+  silently fails over from primary to backup on any provider error.
+  Cloud API down? Local Ollama picks up. Ollama not running? Cloud
+  picks up.
+- **Pre-commit checks are part of the workflow.** Build / lint / test /
+  typecheck commands defined in `.commitgenrc.json` run inside the
+  same wizard before the commit is created, so a failing typecheck
+  blocks the commit instead of being discovered on push.
 
-   ```bash
-   npm install
-   npm run build
-   npm link
-   ```
+## Architecture
 
-2. For Ollama: Install from https://ollama.ai and pull a model (e.g., `ollama pull qwen2.5-coder:7b`)
+Layered, single-process CLI. Five modules, one orchestrator.
 
-3. For OpenRouter: Get your API key from [OpenRouter](https://openrouter.ai/keys). Make sure that you add payment details to your account, so the API works.
-
-4. Set up your configuration (see below).
-
-## First Time Setup
-
-**IMPORTANT:** After installation, run the setup wizard to create your configuration:
-
-```bash
-# Create global config (recommended - works in all repos)
-cgen init --global
-
-# Or create project-specific config
-cgen init --local
+```
+                 git index
+                     │
+                     ▼
+           ┌──────────────────┐
+           │  DiffCollector   │  git diff --cached + per-file stats
+           └─────────┬────────┘  + recent commit history for style cues
+                     │
+                     ▼
+           ┌──────────────────┐
+           │   PromptEngine   │  system prompt + few-shot examples
+           └─────────┬────────┘  + chain-of-thought user prompt
+                     │
+                     ▼
+           ┌──────────────────┐    primary fails
+           │   LLMProvider    │────────────────► fallback provider
+           │ (Ollama | OpenR.)│                    (Ollama | OpenR.)
+           └─────────┬────────┘
+                     │  candidate message
+                     ▼
+           ┌──────────────────┐
+           │ResponseValidator │  enforces [tag] desc, ≤72 chars,
+           └─────────┬────────┘  imperative mood, no trailing period
+                     │
+                     ▼
+           ┌──────────────────┐
+           │   CheckRunner    │  build / lint / test / typecheck
+           └─────────┬────────┘  configured in .commitgenrc.json
+                     │  all green
+                     ▼
+              git commit -m
 ```
 
-The wizard will guide you through:
-1. Choosing between Ollama (local) or OpenRouter (cloud)
-2. Configuring your model
-3. Setting up API keys (if using OpenRouter)
+**Module responsibilities:**
 
-**Without running `cgen init`, you'll get a "Configuration file not found" error.**
+| Module | Responsibility |
+|---|---|
+| `src/git/diffCollector.ts` | Reads staged diff, per-file stats, code context, and the last N commits to give the LLM a feel for the repo's style. |
+| `src/prompts/promptEngine.ts` | Builds the bracketed-commit system prompt with the 5 few-shot examples plus a chain-of-thought user prompt over the diff. |
+| `src/providers/` | `ollama.ts` and `openrouter.ts` implement a common `LLMProvider` interface so the workflow doesn't know which backend it's hitting. |
+| `src/workflows/workflowRunner.ts` | Drives the steps: diff → prompt → primary→fallback → validate → check → commit. Owns the fallback logic. |
+| `src/checks/checkRunner.ts` | Runs the configured shell commands (build/lint/test/typecheck) and short-circuits the commit if any fails. |
+| `src/config/configManager.ts` | Layered config: local `./.commitgenrc.json` overrides global `~/.commitgenrc.json`. Resolves the active model and its provider. |
+| `src/cli/main.ts` | Commander entry. Owns the subcommands (`init`, `models`, `use`, `add-model`, `check`, `doctor`) and the interactive wizard. |
 
-### Setting up OpenRouter API Key
+## Key design decisions
 
-Set your API key using one of these methods (in order of preference):
+| Decision | Choice | Why |
+|---|---|---|
+| Default backend | Local Ollama, not cloud | Privacy + zero ongoing cost + works offline. Cloud is opt-in. |
+| Tag set | `feature`, `bugfix`, `refactor` only | Three tags a reader actually distinguishes; richer Conventional Commits sets get ignored in practice. |
+| Prompting | Few-shot diff→commit + chain-of-thought | A small open model needs concrete patterns to match against; few-shot moves it from generic to specific without fine-tuning. |
+| Provider abstraction | Common interface + factory | Switching from local to cloud is a config edit, not a code change. Same fallback path works in both directions. |
+| Pre-commit checks | First-class in the wizard | Catching a failed typecheck *before* the commit is written is cheaper than rebasing it away afterward. |
+| Config layering | Global with local override | Most users want one config for every repo; a couple of repos need per-project overrides. Layered config gives both without ceremony. |
+| Output format | Single line `[tag] description` | Easy to grep, easy to skim in `git log --oneline`, no body-vs-subject confusion. |
 
-1. **`.env` file in home directory (recommended for global use)**: Create a single `.env` file in your home directory that works across all repos:
-   ```bash
-   echo 'OPENROUTER_API_KEY=your-api-key-here' > ~/.env
-   ```
-   This single file will be automatically loaded whenever you use `cgen` in any repository. The `.env` file is automatically ignored by git (already in `.gitignore`), so your key stays secure.
+## Setup
 
-2. **Project-specific `.env` file**: Create a `.env` file in a specific project root if you need different API keys per project (overrides home `.env`)
+### Prerequisites
 
-3. **Environment variable**: `export OPENROUTER_API_KEY="your-key"` (add to `~/.bashrc` or `~/.zshrc` to persist)
+- **Node.js 18+**
+- **One of:**
+  - **Ollama** (recommended for local): install from https://ollama.ai
+    then `ollama pull qwen2.5-coder:7b`
+  - **OpenRouter API key** from https://openrouter.ai/keys (cloud)
 
-4. **Config file**: Set `apiKey` in your `.commitgenrc.json` (less secure, not recommended)
+### 1. Install
+
+```bash
+git clone https://github.com/Vedant-29/commitgen.git
+cd commitgen
+npm install
+npm run build
+npm link        # makes `cgen` available globally
+```
+
+### 2. First-time config
+
+```bash
+cgen init --global    # recommended; works in every repo
+# or
+cgen init --local     # project-specific .commitgenrc.json
+```
+
+The wizard walks you through provider, model, and (for OpenRouter) API
+key setup. Without running `init`, the next `cgen` invocation will fail
+with "Configuration file not found."
+
+### 3. Set the OpenRouter key (if using cloud)
+
+Pick one — listed in priority order:
+
+| Method | Where | Notes |
+|---|---|---|
+| Home `.env` | `~/.env` with `OPENROUTER_API_KEY=...` | Recommended. Works in every repo, auto-ignored by git. |
+| Project `.env` | `./.env` in a specific repo | Overrides home `.env` per project. |
+| Shell env | `export OPENROUTER_API_KEY=...` in `~/.zshrc` | Standard. |
+| Config file | `apiKey` in `.commitgenrc.json` | Discouraged — checked-in keys leak. |
 
 ## Usage
 
-You can call CommitGen with `cgen` command to generate a commit message for your staged changes:
-
-```sh
-git add <files...>
-cgen
-```
-
-Running `git add` is optional, `cgen` will do it for you.
-
 ```bash
-# First time setup
-cgen init --global      # Create global config (recommended)
-cgen init --local       # Create project-specific config
-
-# Daily usage
-cgen                    # Interactive commit wizard
-cgen models             # List all configured models
-cgen use <model-name>   # Switch to a different model
-cgen add-model          # Add a new model interactively
-cgen check              # Run pre-commit checks
-cgen check build lint   # Run specific checks
-cgen doctor             # Diagnose setup
+git add <files>
+cgen                       # interactive wizard
 ```
+
+`git add` is optional — `cgen` will prompt to stage if nothing is
+staged. Other subcommands:
+
+| Command | What |
+|---|---|
+| `cgen` | Generate a message for staged changes, run checks, commit. |
+| `cgen models` | List configured models. |
+| `cgen use <name>` | Switch the active model. |
+| `cgen add-model` | Add a new model interactively. |
+| `cgen check` | Run the configured pre-commit checks only. |
+| `cgen doctor` | Diagnose the setup (Ollama reachable? key present? config valid?). |
 
 ## Configuration
 
-The setup wizard creates a `.commitgenrc.json` file for you. You can also create it manually.
+### Layering
 
-### Local per repo configuration
+1. **Local** `./.commitgenrc.json` (project-specific, overrides global)
+2. **Global** `~/.commitgenrc.json` (used in every repo)
 
-CommitGen looks for config in this order:
-1. **Local** (project-specific): `./.commitgenrc.json` - overrides global config
-2. **Global** (user-wide): `~/.commitgenrc.json` - works in all repos
+The recommended setup is a global config plus per-project overrides
+only where needed.
 
-**Recommended:** Use global config (`cgen init --global`) and only create local configs when you need project-specific settings.
-
-If you prefer to create the config manually instead of using `cgen init`:
+### Example
 
 ```json
 {
   "activeModel": "local-qwen",
-  "fallbackModel": "local-qwen",
+  "fallbackModel": "cloud-claude",
   "models": {
     "local-qwen": {
       "provider": "ollama",
       "model": "qwen2.5-coder:7b",
       "baseUrl": "http://localhost:11434"
-    },
-    "cloud-gpt": {
-      "provider": "openrouter",
-      "model": "openai/gpt-3.5-turbo",
-      "apiKey": "your-api-key"
     },
     "cloud-claude": {
       "provider": "openrouter",
-      "model": "anthropic/claude-3-haiku",
-      "apiKey": "your-api-key"
+      "model": "anthropic/claude-3-haiku"
     }
+  },
+  "temperature": 0.2,
+  "maxTokens": 500,
+  "checks": {
+    "build": "npm run build",
+    "lint": "npm run lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "prompts": {
+    "askPush": false,
+    "askStage": true,
+    "showChecks": true
   }
 }
 ```
 
-**Switch models:** Change `"activeModel": "cloud-gpt"` or set `COMMITGEN_ACTIVE_MODEL=cloud-gpt`
+Switching models without editing the file:
 
-**Fallback:** Set `"fallbackModel"` to automatically use a backup model if the active model fails (e.g., cloud API down)
-
-### Global config for all repos
-
-Local config still has more priority than Global config, but you may set `activeModel` and `fallbackModel` globally and set local configs for project-specific settings which is more convenient.
-
-Simply edit your `~/.commitgenrc.json` file to set global configuration.
-
-### Config Options
-
-**Per-model:**
-- `provider`: "ollama" or "openrouter"
-- `model`: Model name
-- `baseUrl`: Server URL (required for Ollama)
-- `apiKey`: API key (required for OpenRouter, or set `OPENROUTER_API_KEY`)
-- `temperature`, `maxTokens`: Optional overrides
-
-**Global:**
-- `activeModel`: Currently active model (required)
-- `fallbackModel`: Backup model if active fails (optional, recommended: set to a local model)
-- `temperature`: 0.2 (default)
-- `maxTokens`: 500 (default)
-- `language`: "en"
-- `emoji`: false
-- `checks`: Pre-commit validation (build, lint, test, typecheck)
-- `prompts`: Confirmation prompts (askPush, askStage, showChecks)
-
-### Switch to different models
-
-By default, CommitGen uses the model specified in your config file.
-
-You may switch to a different model by editing your `.commitgenrc.json`:
-
-```json
-{
-  "activeModel": "cloud-gpt"
-}
+```bash
+cgen use cloud-claude
+# or, per-invocation
+COMMITGEN_ACTIVE_MODEL=cloud-claude cgen
 ```
 
-Or set `COMMITGEN_ACTIVE_MODEL=cloud-gpt` environment variable.
+### Remote Ollama
 
-### Running locally with Ollama
-
-You can run CommitGen with local model through Ollama:
-
-- Install and start Ollama from https://ollama.ai
-
-- Run `ollama pull qwen2.5-coder:7b` (do this only once, to pull model)
-
-- Configure in your `.commitgenrc.json`:
+If Ollama is running on another machine (e.g. a GPU box), point
+`baseUrl` at it:
 
 ```json
-{
-  "activeModel": "local-qwen",
-  "models": {
-    "local-qwen": {
-      "provider": "ollama",
-      "model": "qwen2.5-coder:7b",
-      "baseUrl": "http://localhost:11434"
-    }
-  }
-}
+"baseUrl": "http://192.168.1.10:11434"
 ```
 
-If you have Ollama that is set up in docker/ on another machine with GPUs (not locally), you can change the default endpoint URL.
+## Repository tour
 
-You can do so by setting the `baseUrl` in your model configuration:
-
-```json
-{
-  "models": {
-    "local-qwen": {
-      "provider": "ollama",
-      "model": "qwen2.5-coder:7b",
-      "baseUrl": "http://192.168.1.10:11434"
-    }
-  }
-}
 ```
-
-where 192.168.1.10 is example of endpoint URL, where you have Ollama set up.
+src/
+├── cli/
+│   ├── main.ts            # commander entry, subcommand dispatch
+│   ├── wizard.ts          # interactive enquirer flow
+│   └── statusDisplay.ts   # ora spinners + status lines
+├── config/
+│   └── configManager.ts   # layered config + active model resolution
+├── git/
+│   ├── diffCollector.ts           # staged diff + per-file stats
+│   ├── codeContextExtractor.ts    # surrounding code for the LLM
+│   └── commitHistoryRetriever.ts  # last N commits as style examples
+├── prompts/
+│   └── promptEngine.ts    # system prompt + few-shot + CoT user prompt
+├── providers/
+│   ├── base.ts            # LLMProvider interface
+│   ├── ollama.ts          # local Ollama HTTP client
+│   ├── openrouter.ts      # OpenRouter HTTP client
+│   └── index.ts           # ProviderFactory
+├── workflows/
+│   └── workflowRunner.ts  # full diff→commit pipeline + fallback
+├── checks/
+│   └── checkRunner.ts     # run build/lint/test/typecheck shell cmds
+└── utils/
+    ├── validators.ts      # ResponseValidator (tag + length + mood)
+    ├── logger.ts
+    ├── ui.ts
+    ├── theme.ts
+    └── promptUtils.ts
+```
 
 ## License
 
